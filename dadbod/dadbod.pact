@@ -229,6 +229,10 @@
     (read collections name)
   )
 
+  (defun get-incomplete-collections:[object{collection}] ()
+    (filter (collection-incomplete) (get-all-collections))
+  )
+
   (defun get-collection-info:object (name:string)
     (at "info" (read collections name ["info"]))
   )
@@ -236,6 +240,10 @@
   (defun get-next-id-for-collection:string (name:string)
     (format "{}" 
       [(floor (at "supply-minted" (read collections name ["supply-minted"])))])
+  )
+
+  (defun collection-incomplete:bool (c:object{collection})
+    (!= (at "supply-minted" c) (at "total-supply" c))
   )
 
   (defun get-current-tranche 

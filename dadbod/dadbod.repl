@@ -191,8 +191,12 @@
   }
 ])
 (expect-that "Can reserve"
-  (= "Write succeeded")
-  (reserve "dadbod" "alice")
+  (= [1000.0 "Write succeeded" 990.0])
+  [
+    (coin.get-balance "alice")
+    (reserve "dadbod" "alice")
+    (coin.get-balance "alice")
+  ]
 )
 
 (env-keys ["bob-key"])
@@ -264,18 +268,26 @@
   {
     "key": "alice-key",
     "caps": [
-      (coin.TRANSFER "alice" (get-bank) (* 2 (get-current-price-for-collection "dadbod")))
+      (coin.TRANSFER "alice" (get-bank) (* 20 (get-current-price-for-collection "dadbod")))
       (free.dadbod-whitelist.OWNER "alice")
     ]
   }
 ])
 (expect-that "Can reserve discount"
-  (= "Write succeeded")
-  (reserve-discount "dadbod" "alice")
+  (= [990.0 "Write succeeded" 982.5])
+  [
+    (coin.get-balance "alice")
+    (reserve-discount "dadbod" "alice")
+    (coin.get-balance "alice")
+  ]
 )
-(expect-that "Can reserve discount again"
-  (= "Write succeeded")
-  (reserve-discount "dadbod" "alice")
+(expect-that "Can reserve discount"
+  (= [982.5 "Write succeeded" 971.25])
+  [
+    (coin.get-balance "alice")
+    (reserve-discount "dadbod" "alice")
+    (coin.get-balance "alice")
+  ]
 )
 (expect-failure "Cant reserve discount again"
   "No available discounted mints."
@@ -301,6 +313,68 @@
 (expect-that "Reservation unminted"
   (= 1)
   (length (get-reservations-for-account "bob"))
+)
+(expect-that "Prices are correct"
+  (= [15.0 10.0 1.0 1.0])
+  [
+    (get-current-price-for-collection "dadbod")
+    (get-current-price-for-collection "dadbod-wl")
+    (get-current-price-for-collection "hat")
+    (get-current-price-for-collection "wife-beater")
+  ]
+)
+
+(expect-that "Incomplete is correct"
+  (= 4)
+  (length (get-incomplete-collections))
+)
+
+(expect-that "Can reserve discount"
+  (= [
+    971.25 
+    "Write succeeded" 
+    "Write succeeded" 
+    941.25
+    "Write succeeded"
+    921.25
+    "Write succeeded"
+    901.25
+  ])
+  [
+    (coin.get-balance "alice")
+    (reserve "dadbod" "alice")
+    (reserve "dadbod" "alice")
+    (coin.get-balance "alice")
+    (reserve "dadbod" "alice")
+    (coin.get-balance "alice")
+    (reserve "dadbod" "alice")
+    (coin.get-balance "alice")
+  ]
+)
+(expect-that "Prices are correct"
+  (= [20.0 10.0 1.0 1.0])
+  [
+    (get-current-price-for-collection "dadbod")
+    (get-current-price-for-collection "dadbod-wl")
+    (get-current-price-for-collection "hat")
+    (get-current-price-for-collection "wife-beater")
+  ]
+)
+
+(reserve "dadbod" "alice")
+(reserve "dadbod" "alice")
+(expect-failure "Can't mint over supply"
+  "Can't mint more than total supply"
+  (reserve "dadbod" "alice")
+)
+
+(expect-that "Reservation exists"
+  (= 11)
+  (length (get-all-reservations))
+)
+(expect-that "Incomplete is correct"
+  (= 3)
+  (length (get-incomplete-collections))
 )
 
 (commit-tx)
@@ -448,7 +522,9 @@
   (mint-bod (read-msg "in2") (read-keyset "b"))
 )
 (expect-that "Items were minted"
-  (= [9 7 2 "dadbod|0" "dadbod|1" "dadbod|1"])
+  (= [9 7 2 "dadbod|0" "dadbod|1" "dadbod|1" 
+    {"is-original": true,"item-id": "1","type": "head"}
+    {"is-original": true,"item-id": "1","type": "head"}])
   [
     (length (get-all-items))
     (length (get-all-items-for-account "alice"))
@@ -456,6 +532,8 @@
     (at "equipped-to" (get-item "hat" "5"))
     (at "equipped-to" (get-item "hat" "6"))
     (at "equipped-to" (get-item "wife-beater" "1"))
+    (at "info" (get-item "hat" "0"))
+    (at "info" (get-item "hat" "5"))
   ]
 )
 
