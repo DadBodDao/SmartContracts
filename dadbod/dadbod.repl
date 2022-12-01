@@ -222,6 +222,11 @@
   (length (get-unminted-reservations))
 )
 
+(expect-failure "Can't reserve from closed"
+  "Cannot reserve from a closed collection"
+  (reserve "hat" "alice")
+)
+
 (commit-tx)
 
 
