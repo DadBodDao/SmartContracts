@@ -1,3 +1,5 @@
+(namespace "free")
+
 (module dadbod-policy GOV
   @doc "Policy for all dadbod NFTs. Transfer and sale are both allowed. \
   \ Mint and burn are OPS privileges."

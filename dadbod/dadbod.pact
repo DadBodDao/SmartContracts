@@ -744,7 +744,7 @@
         (manifest (kip.token-manifest.create-manifest uri [datum]))
       )
       
-      (free.dadbod-ledger.create-token token-id 0 manifest free.dadbod-policy)
+      (free.dadbod-ledger.create-token token-id 0 manifest (get-token-policy))
       (install-capability (free.dadbod-ledger.MINT token-id account 1.0))
       (free.dadbod-ledger.mint token-id account guard 1.0)
     )
@@ -795,6 +795,28 @@
   )
 
   ;; -------------------------------
+  ;; Policy
+
+  (defconst TOKEN_POLICY:string "POLICY")
+
+  (defschema token-policy
+    policy:module{kip.token-policy-v1}  
+  )
+  (deftable token-policies:{token-policy})
+
+  (defun update-token-policy:string (p:module{kip.token-policy-v1})
+    (with-capability (OPS)
+      (write token-policies TOKEN_POLICY
+        { "policy": p }  
+      )
+    )
+  )
+
+  (defun get-token-policy:module{kip.token-policy-v1} ()
+    (at "policy" (read token-policies TOKEN_POLICY ["policy"]))
+  )
+
+  ;; -------------------------------
   ;; Utils
 
   (defun get-id (collection:string id:string)
@@ -817,8 +839,10 @@
     (create-table reservations)
     (create-table bods)
     (create-table items)
+    (create-table token-policies)
     (init-perms (read-keyset "gov") (read-keyset "ops"))
     (update-string-value BANK_ACCOUNT (read-msg "bank-account"))
+    (update-token-policy free.dadbod-policy)
   ]
   "Contract upgraded"
 )
