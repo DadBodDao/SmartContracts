@@ -1,0 +1,40 @@
+(begin-tx "Test Counter Value")
+(use free.dadbod-mint)
+
+(env-keys ["ops"])
+(env-sigs [
+  {
+    "key": "ops",
+    "caps": [
+      (OPS)
+    ]
+  }
+])
+(expect-that "Can init counter"
+  (= "Write succeeded")
+  (init-counter "id")
+)
+(expect-that "Can get counter"
+  (= 0)
+  (get-counter "id")
+)
+(expect-failure "Can't increment at all"
+  "require-capability: not granted:"
+  (increment-counter "id")
+)
+
+(env-keys ["alice-key"])
+(env-sigs [
+  {
+    "key": "alice-key",
+    "caps": [
+      (OPS)
+    ]
+  }
+])
+(expect-failure "Can't modify value without ops"
+  "Tx Failed: Keyset failure (=): [ops]"
+  (init-counter "id")
+)
+
+(commit-tx)

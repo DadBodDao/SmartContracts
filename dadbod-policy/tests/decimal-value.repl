@@ -1,0 +1,44 @@
+(begin-tx "Test Decimal Value")
+(use free.dadbod-mint)
+
+(env-keys ["ops"])
+(env-sigs [
+  {
+    "key": "ops",
+    "caps": [
+      (OPS)
+    ]
+  }
+])
+(expect-that "Can update decimal value"
+  (= "Write succeeded")
+  (update-decimal-value "id" 1.0)
+)
+(expect-that "Decimal updated"
+  (= 1.0)
+  (get-decimal-value "id")
+)
+(expect-that "Can update decimal value"
+  (= "Write succeeded")
+  (update-decimal-value "id" 2.0)
+)
+(expect-that "Decimal updated"
+  (= 2.0)
+  (get-decimal-value "id")
+)
+
+(env-keys ["alice-key"])
+(env-sigs [
+  {
+    "key": "alice-key",
+    "caps": [
+      (OPS)
+    ]
+  }
+])
+(expect-failure "Can't modify value without ops"
+  "Tx Failed: Keyset failure (=): [ops]"
+  (update-decimal-value "id" 0.0)
+)
+
+(commit-tx)

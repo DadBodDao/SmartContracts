@@ -1,0 +1,17 @@
+(load "kda-env/init.repl")
+
+(begin-tx "Load contracts")
+
+(env-keys ["ops"])
+(env-data {
+  "gov": { "keys": ["gov"], "pred": "="},
+  "ops": { "keys": ["ops"], "pred": "="},
+  "bank-account": ""
+  "init": true
+})
+
+(load "dadbod-ledger/dadbod-ledger.pact")
+(load "dadbod-policy/dadbod-policy.pact")
+(load "dadbod/dadbod.pact")
+
+(commit-tx)
