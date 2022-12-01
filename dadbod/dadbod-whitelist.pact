@@ -1,3 +1,5 @@
+(namespace "free")
+
 (module dadbod-whitelist GOV 
 
   ;; -------------------------------
@@ -103,22 +105,22 @@
     @doc "Stores all the whitelisters. ID is collection-account"
     collection:string
     account:string
-    whitelisted:bool
-    available-free:integer
-    available-discounts:integer
+    is-whitelisted:bool
+    available-free:decimal
+    available-discounts:decimal
     discount:decimal
   )
   (deftable whitelisted:{whitelist})
 
   (defun update-whitelisted:[string] 
     (
-      whitelisted:[object{whitelist}]
+      whitelisted-info:[object{whitelist}]
     )
     @doc "Updates the whitelist information with the provided. \
     \ If an account already exists, the available is summed, \
     \ and the discount is overwritten"
     (with-capability (OPS)
-      (map (update-whitelist) whitelisted)
+      (map (update-whitelist) whitelisted-info)
     )
   )
 
@@ -131,40 +133,44 @@
 
     (let
       (
-        (whitelist-id (get-whitelist-id (at "collection" info) (at "account" info)))
+        (whitelist-id 
+          (get-whitelist-id (at "collection" info) (at "account" info)))
       )  
-      (with-default-read whitelist-id
+
+      (with-default-read whitelisted whitelist-id
         { "collection": (at "collection" info)
-        , "account": (at "accont" info)
-        , "whitelisted": false
-        , "available-free": 0
-        , "available-discounts": 0
+        , "account": (at "account" info)
+        , "is-whitelisted": false
+        , "available-free": 0.0
+        , "available-discounts": 0.0
         , "discount": 0.0
         }
         { "collection":= collection
         , "account":= account
-        , "whitelisted":= whitelisted
+        , "is-whitelisted":= is-whitelisted
         , "available-free":= curr-available-free
         , "available-discounts":= curr-available-discounts
         , "discount":= curr-discount
         }
+
         (let
           (
-            (avail-free (+ curr-available-free (at "available-free" info)))
-            (avail-discount (+ curr-available-free (at "available-free" info)))
-          )  
-          (enforce (!= "" collection))
-          (enforce (>= avail-free 0) "Error: Available free must be >= 0")
-          (enforce (>= avail-discount 0) "Error: Available discount must be >= 0")
+            (discount:decimal (at "discount" info))
+            (avail-free:decimal (+ curr-available-free (at "available-free" info)))
+            (avail-discount:decimal (+ curr-available-discounts (at "available-discounts" info)))
+          )
+          (enforce (!= "" collection) "Collection name cannot be empty")
+          (enforce (>= avail-free 0.0) "Error: Available free must be >= 0")
+          (enforce (>= avail-discount 0.0) "Error: Available discount must be >= 0")
           (enforce (>= discount 0.0) "Error: Discount must be >= 0.0")
 
-          (write whitelisters whitelist-id
-            { "collection" collection
+          (write whitelisted whitelist-id
+            { "collection": collection
             , "account": account
-            , "whitelisted": (at "whitelisted" info)
+            , "is-whitelisted": (at "is-whitelisted" info)
             , "available-free": avail-free
             , "available-discounts": avail-discount
-            , "discount": (at "discount" info)
+            , "discount": discount
             }
           )
         )
@@ -172,8 +178,8 @@
     )
   )
 
-  (defun decrement-available-free-with-ops 
-    (collection:string account:string amount:integer)
+  (defun decrement-available-free-with-ops:string 
+    (collection:string account:string amount:decimal)
     @doc "Decreases the available free mints by the amount provided. \
     \ Must enforce that resulting available is not negative."
 
@@ -182,8 +188,8 @@
     )
   )
 
-  (defun decrement-available-free-with-owner 
-    (collection:string account:string amount:integer)
+  (defun decrement-available-free-with-owner:string 
+    (collection:string account:string amount:decimal)
     @doc "Decreases the available free mints by the amount provided. \
     \ Must enforce that resulting available is not negative."
 
@@ -192,8 +198,8 @@
     )
   )
 
-  (defun decrement-available-free
-    (collection:string account:string amount:integer)
+  (defun decrement-available-free:string 
+    (collection:string account:string amount:decimal)
     @doc "Decreases the available free mints by the amount provided. \
     \ Must enforce that resulting available is not negative."
 
@@ -201,18 +207,18 @@
 
     (let
       (
-        (whitelist-id (get-whitelist-id (at "collection" info) (at "account" info)))
+        (whitelist-id (get-whitelist-id collection account))
       )  
-      (with-read whitelist-id
+      (with-read whitelisted whitelist-id
         { "available-free":= curr-available-free
         }
         (let
           (
             (avail (- curr-available-free amount))
           )
-          (enforce (>= avail 0) "Error: Available free must be >= 0")
+          (enforce (>= avail 0.0) "Error: Available free must be >= 0")
 
-          (update whitelisters whitelist-id
+          (update whitelisted whitelist-id
             { "available-free": avail
             }
           )
@@ -221,28 +227,28 @@
     )
   )
 
-  (defun decrement-available-discount-with-ops 
-    (collection:string account:string amount:integer)
+  (defun decrement-available-discounts-with-ops:string 
+    (collection:string account:string amount:decimal)
     @doc "Decreases the available free mints by the amount provided. \
     \ Must enforce that resulting available is not negative."
 
     (with-capability (OPS)
-      (decrement-available-discount collection account amount)
+      (decrement-available-discounts collection account amount)
     )
   )
 
-  (defun decrement-available-discount-with-owner 
-    (collection:string account:string amount:integer)
+  (defun decrement-available-discounts-with-owner:string 
+    (collection:string account:string amount:decimal)
     @doc "Decreases the available free mints by the amount provided. \
     \ Must enforce that resulting available is not negative."
 
     (with-capability (OWNER account)
-      (decrement-available-discount collection account amount)
+      (decrement-available-discounts collection account amount)
     )
   )
 
-  (defun decrement-available-discount
-    (collection:string account:string amount:integer)
+  (defun decrement-available-discounts:string 
+    (collection:string account:string amount:decimal)
     @doc "Decreases the available discounted mints by the amount provided. \
     \ Must enforce that resulting available is not negative."
     
@@ -250,19 +256,19 @@
 
     (let
       (
-        (whitelist-id (get-whitelist-id (at "collection" info) (at "account" info)))
+        (whitelist-id (get-whitelist-id collection account))
       )  
-      (with-read whitelist-id
-        { "available-discount":= curr-available-discount
+      (with-read whitelisted whitelist-id
+        { "available-discounts":= curr-available-discounts
         }
         (let
           (
-            (avail (- curr-available-discount amount))
+            (avail (- curr-available-discounts amount))
           )
-          (enforce (>= avail 0) "Error: Available discount must be >= 0")
+          (enforce (>= avail 0.0) "Error: Available discounts must be >= 0")
 
-          (update whitelisters whitelist-id
-            { "available-discount": avail
+          (update whitelisted whitelist-id
+            { "available-discounts": avail
             }
           )
         )
@@ -272,15 +278,15 @@
 
   (defun enforce-whitelisted:bool (collection:string account:string)
     @doc "Ensures that the account is whitelisted"
-    (with-default-read whitelisters (get-whitelist-id collection account)
+    (with-default-read whitelisted (get-whitelist-id collection account)
       { "collection": collection
       , "account": account
-      , "whitelisted": false
-      , "available-free": 0
-      , "available-discounts": 0
+      , "is-whitelisted": false
+      , "available-free": 0.0
+      , "available-discounts": 0.0
       , "discount": 0.0
       }
-      { "whitelisted":= wl }
+      { "is-whitelisted":= wl }
       (enforce wl "Must be whitelisted")
     )
   )
@@ -296,22 +302,28 @@
     (read whitelisted (get-whitelist-id collection account))
   )
 
-  (defun get-available-free:integer
+  (defun get-available-free:decimal
     (collection:string account:string)
     @doc "Get the available free mints for the account"
-    (read whitelisted ["available-free"] (get-whitelist-id collection account))
+    (at "available-free" 
+      (read whitelisted 
+        (get-whitelist-id collection account) ["available-free"]))
   )
 
-  (defun get-available-discounts:integer
+  (defun get-available-discounts:decimal
     (collection:string account:string)
     @doc "Get the available discounted mints for the account"
-    (read whitelisted ["available-discounts"] (get-whitelist-id collection account))
+    (at "available-discounts" 
+      (read whitelisted 
+        (get-whitelist-id collection account) ["available-discounts"]))
   )
 
   (defun get-discount:decimal 
     (collection:string account:string)
     @doc "Get the discount for the given account"
-    (read whitelisted ["discount"] (get-whitelist-id collection account))
+    (at "discount" 
+      (read whitelisted 
+        (get-whitelist-id collection account) ["discount"]))
   )
 
   (defun get-whitelist-id:string (collection:string account:string)

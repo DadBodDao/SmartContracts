@@ -1,0 +1,156 @@
+(begin-tx "Guarded Functions")
+(use free.dadbod)
+
+(env-keys ["alice-key"])
+(env-data {
+  "dadbod": {
+    "name": "dadbod",
+    "status": "OPEN",
+    "start-date": "2001-01-01T00:00:00Z",
+    "total-supply": 10.0,
+    "type": "BOD",
+    "info": {
+      "is-dadbod": true
+    },
+    "tranches": [
+      {
+        "min-supply": 0.0,
+        "price": 10.0
+      },
+      {
+        "min-supply": 3.0,
+        "price": 15.0
+      },
+      {
+        "min-supply": 6.0,
+        "price": 20.0
+      }
+    ]
+  }
+})
+(expect-failure "create collection"
+  "Keyset failure (=): [ops]"
+  (create-collection (read-msg "dadbod") coin)
+)
+(expect-failure "update status"
+  "Keyset failure (=): [ops]"
+  (update-status-for-collection "dadbod" "OPEN")
+)
+(expect-failure "reserve admin"
+  "Keyset failure (=): [ops]"
+  (reserve-admin "dadbod" "carol")
+)
+(expect-failure "reserve internal"
+  "require-capability: not granted: (free.dadbod.RESERVE)"
+  (reserve-internal "dadbod" "carol" 1.0)
+)
+
+(env-data {
+  "in-bod": {
+    "collection": "dadbod",
+    "id": "0",
+    "account": "alice",
+    "misc": {
+      "has-reservation": true
+    },
+    "genetics-skin": {
+      "value": "0"
+    },
+    "genetics-hair": {
+      "value": "0",
+      "color": "#000000"
+    },
+    "genetics-facial-hair": {
+      "value": "0",
+      "color": "#000000"
+    },
+    "genetics-eye-left": {
+      "value" : "#000000"
+    },
+    "genetics-eye-right": {
+      "value" : "#000000"
+    },
+    "genetics-scar": {
+      "value": "0"
+    },
+    "item-head": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-eyes": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-ear": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-body": {
+      "collection": "wife-beater",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-back": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-hand-left": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-hand-right": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    }
+  },
+  "in-item": {
+    "collection": "hat",
+    "id": "",
+    "account": "alice",
+    "misc": {}
+  },
+  "g": { "keys": ["carol-key"], "pred": "="}
+})
+(expect-failure "mint bod"
+  "Keyset failure (=): [ops]"
+  (mint-bod (read-msg "in-bod") (read-keyset "g"))
+)
+(expect-failure "create bod"
+  "require-capability: not granted: (free.dadbod.MINT)"
+  (create-bod (read-msg "in-bod") (read-keyset "g"))
+)
+(expect-failure "mint item"
+  "Keyset failure (=): [ops]"
+  (mint-item (read-msg "in-item") (read-keyset "g"))
+)
+(expect-failure "create item"
+  "require-capability: not granted: (free.dadbod.MINT)"
+  (create-item (read-msg "in-item") (read-keyset "g") "")
+)
+(expect-failure "create ledger nft"
+  "require-capability: not granted: (free.dadbod.MINT)"
+  (create-ledger-nft "carol" (read-keyset "g") "dadbod" "10" {})
+)
+
+(commit-tx)
+
+
+
+(begin-tx "Private functions")
+
+
+
+(commit-tx)

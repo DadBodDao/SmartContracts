@@ -544,7 +544,7 @@
   (defun get-manifest:object{manifest} (id:string)
     (at 'manifest (read tokens id)))
   
-  (defun get-all-tokens-for-account:[object{account-info}] (account:string)
+  (defun get-all-tokens-for-account:[object{account-details}] (account:string)
     (select ledger (where "account" (= account)))
   )
 

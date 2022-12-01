@@ -6,12 +6,15 @@
 (env-data {
   "gov": { "keys": ["gov"], "pred": "="},
   "ops": { "keys": ["ops"], "pred": "="},
-  "bank-account": ""
+  "bank-account": "bank",
   "init": true
 })
 
+(coin.create-account "bank" (read-keyset "ops"))
+
 (load "dadbod-ledger/dadbod-ledger.pact")
 (load "dadbod-policy/dadbod-policy.pact")
+(load "dadbod/dadbod-whitelist.pact")
 (load "dadbod/dadbod.pact")
 
 (commit-tx)

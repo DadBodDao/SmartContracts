@@ -1,0 +1,266 @@
+(load "../dadbod-env.repl")
+
+(begin-tx "Create whitelisted and values are correct")
+(use free.dadbod-whitelist)
+
+(env-keys ["ops"])
+(env-data {
+  "in": [
+    {
+      "collection": "dadbod",
+      "account": "alice",
+      "is-whitelisted": true,
+      "available-free": 0.0,
+      "available-discounts": 2.0,
+      "discount": 0.25
+    },
+    {
+      "collection": "dadbod-wl",
+      "account": "alice",
+      "is-whitelisted": true,
+      "available-free": 1.0,
+      "available-discounts": 0.0,
+      "discount": 0.0
+    },
+    {
+      "collection": "dadbod-wl",
+      "account": "bob",
+      "is-whitelisted": false,
+      "available-free": 1.0,
+      "available-discounts": 0.0,
+      "discount": 0.0
+    }
+  ]
+})
+(expect-that "Can update whitelist"
+  (= ["Write succeeded" "Write succeeded" "Write succeeded"])
+  (update-whitelisted (read-msg "in"))
+)
+(expect-that "available free is correct" 
+  (= [0.0 1.0 1.0])
+  [
+    (get-available-free "dadbod" "alice")
+    (get-available-free "dadbod-wl" "alice")
+    (get-available-free "dadbod-wl" "bob")
+  ]
+)
+(expect-that "available discounts is correct" 
+  (= [2.0 0.0 0.0])
+  [
+    (get-available-discounts "dadbod" "alice")
+    (get-available-discounts "dadbod-wl" "alice")
+    (get-available-discounts "dadbod-wl" "bob")
+  ]
+)
+(expect-that "available discounts is correct" 
+  (= [0.25 0.0 0.0])
+  [
+    (get-discount "dadbod" "alice")
+    (get-discount "dadbod-wl" "alice")
+    (get-discount "dadbod-wl" "bob")
+  ]
+)
+
+(commit-tx)
+
+
+
+(begin-tx "Enforce whitelist")
+(use free.dadbod-whitelist)
+
+(expect-that "Enforces whitelist properly"
+  (= [true true])
+  [
+    (enforce-whitelisted "dadbod" "alice")
+    (enforce-whitelisted "dadbod-wl" "alice")
+  ]
+)
+(expect-failure "Enforces whitelist properly"
+  "Must be whitelisted"
+  (enforce-whitelisted "dadbod-wl" "bob")
+)
+(expect-failure "Enforces whitelist properly"
+  "Must be whitelisted"
+  (enforce-whitelisted "dadbod" "bob")
+)
+
+(commit-tx)
+
+
+
+(begin-tx "Update whitelist")
+(use free.dadbod-whitelist)
+
+(env-keys ["ops"])
+(env-data {
+  "in": [
+    {
+      "collection": "dadbod",
+      "account": "alice",
+      "is-whitelisted": true,
+      "available-free": 0.0,
+      "available-discounts": 2.0,
+      "discount": 0.3
+    },
+    {
+      "collection": "dadbod-wl",
+      "account": "alice",
+      "is-whitelisted": true,
+      "available-free": 1.0,
+      "available-discounts": 0.0,
+      "discount": 0.0
+    },
+    {
+      "collection": "dadbod-wl",
+      "account": "bob",
+      "is-whitelisted": true,
+      "available-free": 1.0,
+      "available-discounts": 0.0,
+      "discount": 0.0
+    }
+  ]
+})
+(expect-that "Can update whitelist"
+  (= ["Write succeeded" "Write succeeded" "Write succeeded"])
+  (update-whitelisted (read-msg "in"))
+)
+
+(expect-that "available free is correct" 
+  (= [0.0 2.0 2.0])
+  [
+    (get-available-free "dadbod" "alice")
+    (get-available-free "dadbod-wl" "alice")
+    (get-available-free "dadbod-wl" "bob")
+  ]
+)
+(expect-that "available discounts is correct" 
+  (= [4.0 0.0 0.0])
+  [
+    (get-available-discounts "dadbod" "alice")
+    (get-available-discounts "dadbod-wl" "alice")
+    (get-available-discounts "dadbod-wl" "bob")
+  ]
+)
+(expect-that "available discounts is correct" 
+  (= [0.3 0.0 0.0])
+  [
+    (get-discount "dadbod" "alice")
+    (get-discount "dadbod-wl" "alice")
+    (get-discount "dadbod-wl" "bob")
+  ]
+)
+(expect-that "Enforces whitelist properly"
+  (= [true true true])
+  [
+    (enforce-whitelisted "dadbod" "alice")
+    (enforce-whitelisted "dadbod-wl" "alice")
+    (enforce-whitelisted "dadbod-wl" "bob")
+  ]
+)
+
+(commit-tx)
+
+
+
+(begin-tx "Decrementing")
+(use free.dadbod-whitelist)
+
+(env-keys ["ops"])
+(expect-that "Can decrement free from ops"
+  (= "Write succeeded")
+  (decrement-available-free-with-ops "dadbod-wl" "alice" 1.0)
+)
+(expect-that "Value updated" 
+  (= 1.0)
+  (get-available-free "dadbod-wl" "alice")
+)
+
+(expect-that "Can decrement discounts from ops"
+  (= "Write succeeded")
+  (decrement-available-discounts-with-ops "dadbod" "alice" 2.0)
+)
+(expect-that "Value updated" 
+  (= 2.0)
+  (get-available-discounts "dadbod" "alice")
+)
+
+(env-keys ["alice-key"])
+(expect-that "Can decrement free from owner"
+  (= "Write succeeded")
+  (decrement-available-free-with-owner "dadbod-wl" "alice" 1.0)
+)
+(expect-that "Value updated" 
+  (= 0.0)
+  (get-available-free "dadbod-wl" "alice")
+)
+(expect-failure "Can't decrement into negative"
+  "Available free must be >= 0"
+  (decrement-available-free-with-owner "dadbod-wl" "alice" 1.0)
+)
+
+(expect-that "Can decrement discounts from owner"
+  (= "Write succeeded")
+  (decrement-available-discounts-with-owner "dadbod" "alice" 1.0)
+)
+(expect-that "Value updated" 
+  (= 1.0)
+  (get-available-discounts "dadbod" "alice")
+)
+(expect-failure "Can't decrement into negative"
+  "Available discounts must be >= 0"
+  (decrement-available-discounts-with-owner "dadbod" "alice" 3.0)
+)
+
+
+(commit-tx)
+
+
+
+(begin-tx "Ops guarded and private functions")
+(use free.dadbod-whitelist)
+
+(env-keys ["alice-key"])
+(expect-failure "Can't update whitelisted"
+  "Keyset failure (=): [ops]"
+  (update-whitelisted [])
+)
+(expect-failure "Can't update whitelist"
+  "require-capability: not granted: (free.dadbod-whitelist.WL_MANAGE)"
+  (update-whitelist {
+    "collection": "dadbod-wl",
+    "account": "alice",
+    "is-whitelisted": true,
+    "available-free": 1.0,
+    "available-discounts": 0.0,
+    "discount": 0.0
+  })
+)
+(expect-failure "Can't decrement with ops"
+  "Keyset failure (=): [ops]"
+  (decrement-available-free-with-ops "dadbod" "bob" 1.0)
+)
+(expect-failure "Can't decrement with ops"
+  "Keyset failure (=): [ops]"
+  (decrement-available-discounts-with-ops "dadbod" "bob" 1.0)
+)
+
+(env-keys ["alice-key"])
+(expect-failure "Can't decrement with owner"
+  "Keyset failure (keys-all): [bob-key]"
+  (decrement-available-free-with-owner "dadbod-wl" "bob" 1.0)
+)
+(expect-failure "Can't decrement with owner"
+  "Keyset failure (keys-all): [bob-key]"
+  (decrement-available-discounts-with-owner "dadbod-wl" "bob" 1.0)
+)
+
+(expect-failure "Can't decrement with private"
+  "require-capability: not granted: (free.dadbod-whitelist.WL_MANAGE)"
+  (decrement-available-free "dadbod-wl" "bob" 1.0)
+)
+(expect-failure "Can't decrement with private"
+  "require-capability: not granted: (free.dadbod-whitelist.WL_MANAGE)"
+  (decrement-available-discounts "dadbod-wl" "bob" 1.0)
+)
+
+(commit-tx)

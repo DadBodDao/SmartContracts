@@ -19,8 +19,7 @@
   )
 
   (defcap OPS_INTERNAL ()
-    (compose-capability (MANAGED))
-    (compose-capability (INCREMENT))
+    true
   )
 
   (defschema m-guard ;; ID is a const: OPS_GUARD, GOV_GUARD etc.
@@ -117,7 +116,7 @@
       amount:decimal
     )
     (enforce-ledger)
-    (enforce-guard (at "guard" (get-ops-guard)))
+    (enforce-guard (get-ops-guard))
   )
 
   (defun enforce-burn:bool
@@ -126,7 +125,7 @@
       amount:decimal
     )
     (enforce-ledger)
-    (enforce-guard (at "guard" (get-ops-guard)))
+    (enforce-guard (get-ops-guard))
   )
 
   (defun enforce-offer:bool
@@ -176,4 +175,13 @@
     (enforce-ledger)
     true
   )
+)
+
+
+(if (read-msg "init")
+  [
+    (create-table m-guards)
+    (init-perms (read-keyset "gov") (read-keyset "ops"))
+  ]
+  "Contract upgraded"
 )

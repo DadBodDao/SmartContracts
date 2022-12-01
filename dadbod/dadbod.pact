@@ -1,3 +1,5 @@
+(namespace "free")
+
 (module dadbod GOV
   @doc "This code is meant to be copy-pasted into a different smart contract."
 
@@ -137,6 +139,9 @@
   (defconst COLLECTION_STATUS_WHITELIST:string "WHITELIST"
     @doc "Whitelist collection means it can only be reserved \
     \ by whitelisted addresses")
+  (defconst COLLECTION_STATUS_WHITELIST_FREE:string "WHITELIST_FREE"
+    @doc "Whitelist collection means it can only be reserved \
+    \ by whitelisted addresses")
   (defconst COLLECTION_STATUS_CLOSED:string "CLOSED"
     @doc "Closed means it can only be reserved by an admin.")
 
@@ -146,6 +151,7 @@
   )
   (defschema item-collection-info
     is-original:bool
+    item-id:string
     misc:string
   )
   (defschema collection-tranche
@@ -170,8 +176,7 @@
   (defschema in-create-collection
     name:string
     status:string
-    start-date:time
-    supply-minted:decimal
+    start-date:string
     total-supply:decimal
     type:string
     info:object
@@ -188,46 +193,49 @@
     (with-capability (OPS)
       (let
         (
+          (name:string (at "name" c))
           (type:string (at "type" c))
           (status:string (at "status" c))
+          (tranches:[object:{collection-tranche}] (at "tranches" c))
         )
-      )
-      ;; Check the types
-      (enforce 
-        (or (= type COLLECTION_TYPE_BOD) (= type COLLECTION_TYPE_ITEM))
-        "Type must be a bod or an item")
-      (enforce 
-        (contains status 
-          [
-            COLLECTION_STATUS_OPEN 
-            COLLECTION_STATUS_CLOSED 
-            COLLECTION_STATUS_WHITELIST
-          ]
-        )
-        "Status is not valid")
-      (enforce (> (length tranches) 0) "Tranches must be provided")
+        ;; Check the types
+        (enforce 
+          (or (= type COLLECTION_TYPE_BOD) (= type COLLECTION_TYPE_ITEM))
+          "Type must be a bod or an item")
+        (enforce-valid-status status)
+        (enforce (> (length tranches) 0) "Tranches must be provided")
 
-      (insert collections name
-        { "name": (at "name" c)
-        , "status": (at "status" c)
-        , "start-date": (at "start-date" c)
-        , "supply-minted": (at "supply-minted" c)
-        , "total-supply": (at "total-supply" c)
-        , "payment-token": payment-token
-        , "type": (at "type" c)
-        , "info": (at "info" c)
-        , "tranches": (at "tranches" c)
-        }
+        (insert collections name
+          { "name": (at "name" c)
+          , "status": (at "status" c)
+          , "start-date": (time (at "start-date" c))
+          , "supply-minted": 0.0
+          , "total-supply": (at "total-supply" c)
+          , "payment-token": payment-token
+          , "type": (at "type" c)
+          , "info": (at "info" c)
+          , "tranches": (at "tranches" c)
+          }
+        )
       )
     )
   )
 
-  (defun get-all-collections ()
+  (defun get-all-collections:[object{collection}] ()
     (select collections (constantly true))
   )
 
-  (defun get-collection (name:string)
+  (defun get-collection:object{collection} (name:string)
     (read collections name)
+  )
+
+  (defun get-collection-info:object (name:string)
+    (at "info" (read collections name ["info"]))
+  )
+
+  (defun get-next-id-for-collection:string (name:string)
+    (format "{}" 
+      [(floor (at "supply-minted" (read collections name ["supply-minted"])))])
   )
 
   (defun get-current-tranche 
@@ -261,13 +269,37 @@
       (
         (c:object{collection} (get-collection name))  
       )
-    )
-    (at "price" 
-      (get-current-tranche-of-collection 
-        (at "supply-minted" c) 
-        (at "tranches" c)
+      (at "price" 
+        (get-current-tranche 
+          (at "supply-minted" c) 
+          (at "tranches" c)
+        )
       )
     )
+  )
+
+  (defun update-status-for-collection:string (name:string new-status:string)
+    @doc "Updates the collection status to the provided one."
+    (enforce-valid-status new-status)
+
+    (with-capability (OPS)
+      (update collections name
+        { "status": new-status }  
+      )
+    )
+  )
+
+  (defun enforce-valid-status:bool (status:string)
+    (enforce 
+      (contains status 
+        [
+          COLLECTION_STATUS_OPEN 
+          COLLECTION_STATUS_CLOSED 
+          COLLECTION_STATUS_WHITELIST
+          COLLECTION_STATUS_WHITELIST_FREE
+        ]
+      )
+      "Status is not valid")
   )
 
   ;; -------------------------------
@@ -279,6 +311,7 @@
 
   (defcap RESERVED (reservation:object{reservation})
     @event
+    true
   )
 
   (defschema reservation
@@ -291,15 +324,23 @@
   )
   (deftable reservations:{reservation})
 
+  (defun reserve-admin:string (collection-name:string account:string)
+    @doc "Reserves an NFT from the collection if possible."
+
+    (with-capability (OPS)
+      (reserve-internal collection-name account 1.0)
+    )
+  )
+
   (defun reserve-free:string (collection-name:string account:string)
     @doc "Reserves for free, if the account has available free mints"
     (with-capability (RESERVE)
       (let 
         (
-          (avail:integer 
+          (avail:decimal 
             (free.dadbod-whitelist.get-available-free collection-name account))
         )
-        (enforce (> avail 0) "No available free mints.")
+        (enforce (> avail 0.0) "No available free mints.")
         (free.dadbod-whitelist.decrement-available-free-with-owner
           collection-name account 1.0)
         (reserve-internal collection-name account 1.0)
@@ -312,23 +353,15 @@
     (with-capability (RESERVE)
       (let 
         (
-          (avail-discount:integer 
+          (avail:decimal 
             (free.dadbod-whitelist.get-available-discounts collection-name account))
           (discount:decimal (free.dadbod-whitelist.get-discount collection-name account))
         )
-        (enforce (> avail 0) "No available discounted mints.")
-        (free.dadbod-whitelist.decrement-available-discount-with-owner
+        (enforce (> avail 0.0) "No available discounted mints.")
+        (free.dadbod-whitelist.decrement-available-discounts-with-owner
           collection-name account 1.0)
         (reserve-internal collection-name account discount)
       )
-    )
-  )
-
-  (defun reserve-admin:string (collection-name:string account:string)
-    @doc "Reserves an NFT from the collection if possible."
-
-    (with-capability (OPS)
-      (reserve-internal collection-name account 1.0)
     )
   )
 
@@ -360,12 +393,19 @@
       , "info":= info
       , "tranches":= tranches
       }
-      (enforce (> (curr-time) start-date) "The mint hasn't started yet")
+      (enforce (>= (curr-time) start-date) "The mint hasn't started yet")
       (enforce (< supply-minted total-supply) "Can't mint more than total supply")
-      (enforce (!= status COLLECTION_STATUS_CLOSED))
+      (enforce (!= status COLLECTION_STATUS_CLOSED) "Cannot reserve from a closed collection")
 
       (if (= status COLLECTION_STATUS_WHITELIST)
         (free.dadbod-whitelist.enforce-whitelisted collection-name account)
+        []
+      )
+      (if (= status COLLECTION_STATUS_WHITELIST_FREE)
+        [
+          (free.dadbod-whitelist.enforce-whitelisted collection-name account)
+          (enforce (= discount 1.0) "Free must be free")
+        ]
         []
       )
 
@@ -374,10 +414,10 @@
           (price:decimal 
             (* 
               (- 1.0 discount)
-              (at "price" (get-current-tranch supply-minted tranches))
+              (at "price" (get-current-tranche supply-minted tranches))
             )
           )
-          (id:string (format "{}" [supply-minted]))
+          (id:string (format "{}" [(floor supply-minted)]))
         )
         
         (if (> price 0.0)
@@ -425,6 +465,11 @@
     (select reservations (where "minted" (= false)))
   )
 
+  (defun get-reservations-for-account:[object{reservation}] 
+    (account:string)
+    (select reservations (where "account" (= account)))  
+  )
+
   ;; -------------------------------
   ;; (Dad)Bods and Items
 
@@ -440,11 +485,11 @@
     ledger-id:string
     account:string
     misc:object
-    genetics-skin:string
+    genetics-skin:object
     genetics-hair:object
     genetics-facial-hair:object
-    genetics-eye-left:string
-    genetics-eye-right:string
+    genetics-eye-left:object
+    genetics-eye-right:object
     genetics-scar:object
     item-head:string ;; Refers to an item
     item-eyes:string ;; Refers to an item
@@ -462,6 +507,7 @@
     id:string
     ledger-id:string
     account:string 
+    info:object
     misc:object
     equipped-to:string ;; Refers to a bod
   )
@@ -474,11 +520,11 @@
     id:string 
     account:string
     misc:object
-    genetics-skin:string
+    genetics-skin:object
     genetics-hair:object
     genetics-facial-hair:object
-    genetics-eye-left:string
-    genetics-eye-right:string
+    genetics-eye-left:object
+    genetics-eye-right:object
     genetics-scar:object
     item-head:object ;; Refers to an item
     item-eyes:object ;; Refers to an item
@@ -492,54 +538,76 @@
     collection:string
     id:string 
     account:string
-    misc:object
+    misc:object ;; Uses the info from the collection to fill this in
   )
 
   (defun mint-bod:string 
     (
       in:object{in-mint-bod}
+      guard:guard
     )
     @doc "Mints a bod: Creates a ledger token, mints one, and does the same for \
     \ each existing item. Returns the collection|id."
     
     (with-capability (OPS)
-      (create-bod in)
+      (create-bod in guard)
     )
   )
 
   (defun create-bod:string 
     (
       in:object{in-mint-bod}
+      guard:guard
     )
     @doc "Private function to create a bod: Creates a ledger token, mints one, and does the same for \
     \ each existing item. Returns the collection|id."
     
     (require-capability (MINT))
 
-    ;; Create the marmalade NFT
-    (create-ledger-nft 
-      (at "account" in)
-      (at "collection" in)
-      (at "id" in)
-    )
-
-    (let
+    (let*
       (
-        (token-id:string (get-id (at "collection" in) (at "id" in)))
+        (id:string 
+          (if (= "" (at "id" in)) 
+            (get-next-id-for-collection (at "collection" in)) 
+            (at "id" in)
+          )
+        )
+        (token-id:string (get-id (at "collection" in) id))
+        (info:object (get-collection-info (at "collection" in)))
+      )
+
+       ;; Create the marmalade NFT
+      (create-ledger-nft 
+        (at "account" in)
+        guard
+        (at "collection" in)
+        id
+        info
       )
 
       ;; Update the reservation if it has one
+      ;; Otherwise, update the supply we minted from
       (if (contains "has-reservation" (at "misc" in))
-        (update reservations (get-id collection-name id)
+        (update reservations token-id
           { "minted": true }
         )
-        []
+        (with-read collections (at "collection" in)
+          { "supply-minted":= supply-minted
+          , "total-supply":= total-supply 
+          }
+          (enforce (< supply-minted total-supply) 
+            "Can't create bod, not enough supply in collection")
+          ; Increment the supply minted
+          (update collections (at "collection" in)
+            { "supply-minted": (+ supply-minted 1.0) }  
+          )
+        )
       )
 
       ;; Create the bod
       (insert bods token-id
         { "collection": (at "collection" in) 
-        , "id": (at "id" in)
+        , "id": id
         , "ledger-id": token-id 
         , "account": (at "account" in)
         , "misc": (at "misc" in)
@@ -550,19 +618,19 @@
         , "genetics-eye-right": (at "genetics-eye-right" in) 
         , "genetics-scar": (at "genetics-scar" in) 
         , "item-head": (if (contains "collection" (at "item-head" in)) 
-          (create-item (at "item-head" in)) "")
+          (create-item (at "item-head" in) guard token-id) "")
         , "item-eyes": (if (contains "collection" (at "item-eyes" in)) 
-          (create-item (at "item-eyes" in)) "")
+          (create-item (at "item-eyes" in) guard token-id) "")
         , "item-ear": (if (contains "collection" (at "item-ear" in)) 
-          (create-item (at "item-ear" in)) "")
+          (create-item (at "item-ear" in) guard token-id) "")
         , "item-body": (if (contains "collection" (at "item-body" in)) 
-          (create-item (at "item-body" in)) "")
+          (create-item (at "item-body" in) guard token-id) "")
         , "item-back": (if (contains "collection" (at "item-back" in)) 
-          (create-item (at "item-back" in)) "")
+          (create-item (at "item-back" in) guard token-id) "")
         , "item-hand-left": (if (contains "collection" (at "item-hand-left" in)) 
-          (create-item (at "item-hand-left" in)) "")
+          (create-item (at "item-hand-left" in) guard token-id) "")
         , "item-hand-right": (if (contains "collection" (at "item-hand-right" in)) 
-          (create-item (at "item-hand-right" in)) "")
+          (create-item (at "item-hand-right" in) guard token-id) "")
         }
       )
 
@@ -573,16 +641,18 @@
   (defun mint-item:string
     (
       in:object{in-mint-item}
+      guard:guard
     )
     @doc "Ops function to create an item."
     (with-capability (OPS)
-      (create-item in "")
+      (create-item in guard "")
     )
   )
 
   (defun create-item:string 
     (
       in:object{in-mint-item}
+      guard:guard
       equipped-to:string
     )
     @doc "Private function to create an item: Creates a ledger token, mints one, \
@@ -590,34 +660,55 @@
     
     (require-capability (MINT))
 
-    ;; Create the marmalade NFT
-    (create-ledger-nft 
-      (at "account" in)
-      (at "collection" in)
-      (at "id" in)  
-    )
-
-    (let
+    (let*
       (
-        (token-id:string (get-id (at "collection" in) (at "id" in)))
-      )  
+        (id:string 
+          (if (= "" (at "id" in)) 
+            (get-next-id-for-collection (at "collection" in)) 
+            (at "id" in)
+          )
+        )
+        (token-id:string (get-id (at "collection" in) id))
+        (info:object (get-collection-info (at "collection" in)))
+      )
+
+      ;; Create the marmalade NFT
+      (create-ledger-nft 
+        (at "account" in)
+        guard
+        (at "collection" in)
+        id
+        info
+      )
 
       ;; Update the reservation if it has one
+      ;; Otherwise, update the supply we minted from
       (if (contains "has-reservation" (at "misc" in))
-        (update reservations (get-id collection-name id)
+        (update reservations token-id
           { "minted": true }
         )
-        []
+        (with-read collections (at "collection" in)
+          { "supply-minted":= supply-minted
+          , "total-supply":= total-supply 
+          }
+          (enforce (< supply-minted total-supply) 
+            "Can't create item, not enough supply in collection")
+          ; Increment the supply minted
+          (update collections (at "collection" in)
+            { "supply-minted": (+ supply-minted 1.0) }  
+          )
+        )
       )
 
       ;; Create the item
-      (insert bods token-id
+      (insert items token-id
         { "collection": (at "collection" in) 
-        , "id": (at "id" in)
+        , "id": id
         , "ledger-id": token-id 
         , "account": (at "account" in)
+        , "info": info
         , "misc": (at "misc" in)
-        , "equipped-to": "equipped-to"
+        , "equipped-to": equipped-to
         }
       )
 
@@ -628,8 +719,10 @@
   (defun create-ledger-nft 
     (
       account:string
+      guard:guard
       collection-name:string
       id:string
+      info:object
     )
     (require-capability (MINT))
 
@@ -639,12 +732,13 @@
         (uri (kip.token-manifest.uri "module" "free.dadbod"))
         (datum 
           (kip.token-manifest.create-datum 
-            uri { "collection": collection-name, "id": id }))
+            uri { "collection": collection-name, "id": id, "info": info }))
         (manifest (kip.token-manifest.create-manifest uri [datum]))
       )
       
-      (free.dadbod-ledger.create-token token-id precision manifest policy)
-      (free.dadbod-ledger.mint token-id account 1.0)
+      (free.dadbod-ledger.create-token token-id 0 manifest free.dadbod-policy)
+      (install-capability (free.dadbod-ledger.MINT token-id account 1.0))
+      (free.dadbod-ledger.mint token-id account guard 1.0)
     )
   )
 
@@ -656,12 +750,22 @@
     (select bods (where "account" (= account)))
   )
 
+  (defun get-bod:object{bod} 
+    (collection:string id:string)
+    (read bods (get-id collection id))  
+  )
+
   (defun get-all-items:[object{item}] ()
     (select items (constantly true))
   )
 
   (defun get-all-items-for-account:[object{item}] (account:string)
     (select items (where "account" (= account)))
+  )
+
+  (defun get-item:object{item} 
+    (collection:string id:string)
+    (read items (get-id collection id))  
   )
 
   (defcap TRANSFER (account:string)
@@ -675,10 +779,10 @@
       account:string
       receiver:string
     )
-    (require-capability (TRANSFER account))
-
-    (update bods (get-id collection-name id)
-      { "account": receiver }
+    (with-capability (TRANSFER account)
+      (update bods (get-id collection-name id)
+        { "account": receiver }
+      )
     )
   )
 
@@ -700,6 +804,7 @@
 (if (read-msg "init")
   [
     (create-table m-guards)
+    (create-table values)
     (create-table collections)
     (create-table reservations)
     (create-table bods)

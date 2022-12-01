@@ -1,0 +1,466 @@
+(load "../dadbod-env.repl")
+
+(begin-tx "Create collections: Dadbod and items")
+(use free.dadbod)
+
+(env-keys ["ops"])
+;  (env-sigs [
+;    {
+;      "key": "ops"
+;      "caps": [
+;        (OPS)
+;      ]
+;    }
+;  ])
+(env-data {
+  "dadbod": {
+    "name": "dadbod",
+    "status": "OPEN",
+    "start-date": "2001-01-01T00:00:00Z",
+    "total-supply": 10.0,
+    "type": "BOD",
+    "info": {
+      "is-dadbod": true
+    },
+    "tranches": [
+      {
+        "min-supply": 0.0,
+        "price": 10.0
+      },
+      {
+        "min-supply": 3.0,
+        "price": 15.0
+      },
+      {
+        "min-supply": 6.0,
+        "price": 20.0
+      }
+    ]
+  },
+  "dadbod-wl": {
+    "name": "dadbod-wl",
+    "status": "WHITELIST_FREE",
+    "start-date": "2001-01-01T00:00:00Z",
+    "total-supply": 10.0,
+    "type": "BOD",
+    "info": {
+      "is-dadbod": true
+    },
+    "tranches": [
+      {
+        "min-supply": 0.0,
+        "price": 10.0
+      },
+      {
+        "min-supply": 3.0,
+        "price": 15.0
+      },
+      {
+        "min-supply": 6.0,
+        "price": 20.0
+      }
+    ]
+  },
+  "item-hat": {
+    "name": "hat",
+    "status": "CLOSED",
+    "start-date": "2001-01-01T00:00:00Z",
+    "total-supply": 100.0,
+    "type": "ITEM",
+    "info": {
+      "is-original": true,
+      "type": "head",
+      "item-id": "1"
+    },
+    "tranches": [
+      {
+        "min-supply": 0.0,
+        "price": 1.0
+      }
+    ]
+  },
+  "item-body": {
+    "name": "wife-beater",
+    "status": "CLOSED",
+    "start-date": "2001-01-01T00:00:00Z",
+    "total-supply": 10.0,
+    "type": "ITEM",
+    "info": {
+      "is-original": true,
+      "type": "body",
+      "item-id": "1",
+      "misc": ""
+    },
+    "tranches": [
+      {
+        "min-supply": 0.0,
+        "price": 1.0
+      }
+    ]
+  }
+})
+(expect-that "Can create collection"
+  (= "Write succeeded")
+  (create-collection (read-msg "dadbod") coin)
+)
+(expect-that "Can create collection"
+  (= "Write succeeded")
+  (create-collection (read-msg "dadbod-wl") coin)
+)
+(expect-that "Can create collection"
+  (= "Write succeeded")
+  (create-collection (read-msg "item-hat") coin)
+)
+(expect-that "Can create collection"
+  (= "Write succeeded")
+  (create-collection (read-msg "item-body") coin)
+)
+
+(expect-that "Collection info is correct"
+  (= true)
+  (at "is-dadbod" (get-collection-info "dadbod"))
+)
+(expect-that "Collection info is correct"
+  (= ["head" "body"])
+  [
+    (at "type" (get-collection-info "hat"))
+    (at "type" (get-collection-info "wife-beater"))
+  ]
+)
+(expect-that "Prices are correct"
+  (= [10.0 10.0 1.0 1.0])
+  [
+    (get-current-price-for-collection "dadbod")
+    (get-current-price-for-collection "dadbod-wl")
+    (get-current-price-for-collection "hat")
+    (get-current-price-for-collection "wife-beater")
+  ]
+)
+
+(commit-tx)
+
+
+
+(begin-tx "Create whitelisted")
+(use free.dadbod-whitelist)
+
+(env-keys ["ops"])
+(env-data {
+  "in": [
+    {
+      "collection": "dadbod",
+      "account": "alice",
+      "is-whitelisted": true,
+      "available-free": 0.0,
+      "available-discounts": 2.0,
+      "discount": 0.25
+    },
+    {
+      "collection": "dadbod-wl",
+      "account": "alice",
+      "is-whitelisted": true,
+      "available-free": 1.0,
+      "available-discounts": 0.0,
+      "discount": 0.0
+    }
+  ]
+})
+(update-whitelisted (read-msg "in"))
+
+(commit-tx)
+
+
+
+(begin-tx "Reserving")
+(use free.dadbod)
+
+(env-chain-data {"block-time": (time "2000-01-01T00:00:00Z")})
+(expect-failure "Can't reserve before mint starts"
+  "The mint hasn't started yet"
+  (reserve "dadbod" "alice")
+)
+
+(env-chain-data {"block-time": (time "2001-01-01T00:00:00Z")})
+(env-keys ["alice-key"])
+(env-sigs [
+  {
+    "key": "alice-key",
+    "caps": [
+      (coin.TRANSFER "alice" (get-bank) (get-current-price-for-collection "dadbod"))
+    ]
+  }
+])
+(expect-that "Can reserve"
+  (= "Write succeeded")
+  (reserve "dadbod" "alice")
+)
+
+(env-keys ["bob-key"])
+(env-sigs [
+  {
+    "key": "bob-key",
+    "caps": [
+      (coin.TRANSFER "bob" (get-bank) (get-current-price-for-collection "dadbod"))
+    ]
+  }
+])
+(expect-that "Can reserve"
+  (= "Write succeeded")
+  (reserve "dadbod" "bob")
+)
+
+(expect-that "Reservation exists"
+  (= 2)
+  (length (get-all-reservations))
+)
+(expect-that "Reservation unminted"
+  (= 2)
+  (length (get-unminted-reservations))
+)
+
+(commit-tx)
+
+
+
+(begin-tx "Reserving free")
+(use free.dadbod)
+
+(env-keys ["alice-key"])
+(expect-that "Can reserve"
+  (= "Write succeeded")
+  (reserve-free "dadbod-wl" "alice")
+)
+(expect-failure "Can't reserve free again"
+  "No available free mints."
+  (reserve-free "dadbod-wl" "alice")
+)
+(expect-failure "Can't reserve free if no wl"
+  "row not found"
+  (reserve-free "dadbod-wl" "bob")
+)
+(expect-failure "Can't reserve from whitelisted collection"
+  "Must be whitelisted"
+  (reserve "dadbod-wl" "bob")
+)
+
+(expect-that "Reservation exists"
+  (= 3)
+  (length (get-all-reservations))
+)
+(expect-that "Reservation unminted"
+  (= 3)
+  (length (get-unminted-reservations))
+)
+
+(commit-tx)
+
+
+
+(begin-tx "Reserving discount")
+(use free.dadbod)
+
+(env-keys ["alice-key"])
+(env-sigs [
+  {
+    "key": "alice-key",
+    "caps": [
+      (coin.TRANSFER "alice" (get-bank) (* 2 (get-current-price-for-collection "dadbod")))
+      (free.dadbod-whitelist.OWNER "alice")
+    ]
+  }
+])
+(expect-that "Can reserve discount"
+  (= "Write succeeded")
+  (reserve-discount "dadbod" "alice")
+)
+(expect-that "Can reserve discount again"
+  (= "Write succeeded")
+  (reserve-discount "dadbod" "alice")
+)
+(expect-failure "Cant reserve discount again"
+  "No available discounted mints."
+  (reserve-discount "dadbod" "alice")
+)
+(expect-failure "Cant reserve discount without wl"
+  "row not found"
+  (reserve-discount "dadbod" "bob")
+)
+
+(expect-that "Reservation exists"
+  (= 5)
+  (length (get-all-reservations))
+)
+(expect-that "Reservation unminted"
+  (= 5)
+  (length (get-unminted-reservations))
+)
+(expect-that "Reservation unminted"
+  (= 4)
+  (length (get-reservations-for-account "alice"))
+)
+(expect-that "Reservation unminted"
+  (= 1)
+  (length (get-reservations-for-account "bob"))
+)
+
+(commit-tx)
+
+
+
+(begin-tx "Minting")
+(use free.dadbod)
+
+(env-keys ["ops"])
+(env-data {
+  "in1": {
+    "collection": "dadbod",
+    "id": "0",
+    "account": "alice",
+    "misc": {
+      "has-reservation": true
+    },
+    "genetics-skin": {
+      "value": "0"
+    },
+    "genetics-hair": {
+      "value": "0",
+      "color": "#000000"
+    },
+    "genetics-facial-hair": {
+      "value": "0",
+      "color": "#000000"
+    },
+    "genetics-eye-left": {
+      "value" : "#000000"
+    },
+    "genetics-eye-right": {
+      "value" : "#000000"
+    },
+    "genetics-scar": {
+      "value": "0"
+    },
+    "item-head": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-eyes": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-ear": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-body": {
+      "collection": "wife-beater",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-back": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-hand-left": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    },
+    "item-hand-right": {
+      "collection": "hat",
+      "id": "",
+      "account": "alice",
+      "misc": {}
+    }
+  },
+  "in2": {
+    "collection": "dadbod",
+    "id": "1",
+    "account": "bob",
+    "misc": {
+      "has-reservation": true
+    },
+    "genetics-skin": {
+      "value": "0"
+    },
+    "genetics-hair": {
+      "value": "0",
+      "color": "#000000"
+    },
+    "genetics-facial-hair": {
+      "value": "0",
+      "color": "#000000"
+    },
+    "genetics-eye-left": {
+      "value" : "#000000"
+    },
+    "genetics-eye-right": {
+      "value" : "#000000"
+    },
+    "genetics-scar": {
+      "value": "0"
+    },
+    "item-head": {
+      "collection": "hat",
+      "id": "",
+      "account": "bob",
+      "misc": {}
+    },
+    "item-eyes": {},
+    "item-ear": {},
+    "item-body": {
+      "collection": "wife-beater",
+      "id": "",
+      "account": "bob",
+      "misc": {}
+    },
+    "item-back": {},
+    "item-hand-left": {},
+    "item-hand-right": {}
+  },
+  "a": { "keys": ["alice-key"], "pred": "keys-all"},
+  "b": { "keys": ["bob-key"], "pred": "keys-all"}
+})
+(env-sigs [
+  {
+    "key": "ops",
+    "caps": [
+      (OPS)
+      (free.dadbod-ledger.MINT "dadbod|0" "alice" 1.0)
+    ]
+  }
+])
+(expect-that "Can create bod with associated items"
+  (= "dadbod|0")
+  (mint-bod (read-msg "in1") (read-keyset "a"))
+)
+(expect-that "Can create bod with associated items"
+  (= "dadbod|1")
+  (mint-bod (read-msg "in2") (read-keyset "b"))
+)
+(expect-that "Items were minted"
+  (= [9 7 2 "dadbod|0" "dadbod|1" "dadbod|1"])
+  [
+    (length (get-all-items))
+    (length (get-all-items-for-account "alice"))
+    (length (get-all-items-for-account "bob"))
+    (at "equipped-to" (get-item "hat" "5"))
+    (at "equipped-to" (get-item "hat" "6"))
+    (at "equipped-to" (get-item "wife-beater" "1"))
+  ]
+)
+
+(commit-tx)
+
+
+(load "tests/gov-and-ops.repl")
+(load "tests/guarded.repl")
